@@ -1,0 +1,23 @@
+# Java / Spring
+target/
+*.class
+*.log
+*.iml
+*.jar
+*.war
+*.tmp
+
+# Spring Boot secrets
+application-example.properties
+
+# Node / React
+node_modules/
+dist/
+build/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# VSCode
+.vscode/
