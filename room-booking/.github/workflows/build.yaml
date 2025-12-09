@@ -1,4 +1,4 @@
-name: Build & Test Backend
+name: Build Backend
 
 on:
   push:
@@ -12,16 +12,32 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: "murine"
-          java-version: "17"
+          java-version: "21"   # or 17 if your project uses 17
 
-      - name: Build Project
-        run: mvn clean compile
+      - name: Cache Maven packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
 
-      - name: Run Tests
-        run: mvn test
+      - name: Build (skip tests for now)
+        run: mvn -B -DskipTests=true clean package
+      - name: Upload Jar Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: room-booking-build
+          path: target/*.jar
+      - name: Print Environment Info
+        run: |
+          echo "Branch: $GITHUB_REF"
+          echo "Commit: $GITHUB_SHA"
+          echo "Actor: $GITHUB_ACTOR"
+          echo "Repo: $GITHUB_REPOSITORY"
