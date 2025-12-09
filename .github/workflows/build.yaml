@@ -9,6 +9,11 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    # All `run:` steps will execute from this folder by default
+    defaults:
+      run:
+        working-directory: room-booking/room-booking
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -20,10 +25,11 @@ jobs:
           java-version: "21"
 
       - name: Build backend using Maven
-        run: mvn -B -DskipTests=true clean package
+        run: mvn -B -Dmaven.test.skip=true clean package
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: backend-build
-          path: target/*.jar
+          # path is relative to repo root, NOT working-directory
+          path: room-booking/room-booking/target/*.jar
