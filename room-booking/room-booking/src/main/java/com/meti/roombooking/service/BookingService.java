@@ -23,4 +23,7 @@ public interface BookingService {
     BookingResponse updateStatus(Long bookingId, BookingStatus status);
 
 
+    List<BookingResponse> getBookingsSorted(String sortBy, String order);
+
+    List<BookingResponse> getUserBookingsSorted(Long userId, String sortBy, String order);
 }

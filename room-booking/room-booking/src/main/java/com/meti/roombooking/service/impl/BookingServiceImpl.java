@@ -14,6 +14,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -116,6 +118,60 @@ public class BookingServiceImpl implements BookingService {
         return mapToResponse(updated);
     }
 
+    public List<BookingResponse> getBookingsSorted(String sortBy, String order) {
+        List<Booking> bookings = bookingRepository.findAll();
+        return sortBookings(bookings, sortBy, order);
+    }
+
+    public List<BookingResponse> getUserBookingsSorted(Long userId, String sortBy, String order) {
+        // Verify user exists
+        userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        List<Booking> bookings = bookingRepository.findByUserId(userId);
+        return sortBookings(bookings, sortBy, order);
+    }
+
+    private List<BookingResponse> sortBookings(List<Booking> bookings, String sortBy, String order) {
+        Comparator<Booking> comparator;
+
+        switch (sortBy.toLowerCase()) {
+            case "checkin":
+                comparator = Comparator.comparing(Booking::getCheckIn);
+                break;
+            case "checkout":
+                comparator = Comparator.comparing(Booking::getCheckOut);
+                break;
+            case "price":
+                comparator = Comparator.comparing(Booking::getTotalPrice);
+                break;
+            case "createdat":
+                comparator = Comparator.comparing(Booking::getCreatedAt);
+                break;
+            case "status":
+                comparator = Comparator.comparing(b -> b.getStatus().toString());
+                break;
+            case "default":
+                // Uses the natural ordering from compareTo method
+                comparator = Comparator.naturalOrder();
+                break;
+            default:
+                throw new IllegalArgumentException("Invalid sort field: " + sortBy);
+        }
+
+        // Apply ordering (ascending or descending)
+        if ("desc".equalsIgnoreCase(order)) {
+            comparator = comparator.reversed();
+        }
+
+        // Sort the list
+        bookings.sort(comparator);
+
+        // Convert to response DTOs
+        return bookings.stream()
+                .map(this::mapToResponse)
+                .collect(Collectors.toList());
+    }
     private BookingResponse mapToResponse(Booking booking) {
         return BookingResponse.builder()
                 .id(booking.getId())
@@ -129,6 +185,14 @@ public class BookingServiceImpl implements BookingService {
                 .totalPrice(booking.getTotalPrice())
                 .createdAt(booking.getCreatedAt())
                 .build();
+    }
+
+    public List<BookingResponse> getBookingsSorted() {
+        List<Booking> bookings = bookingRepository.findAll();
+        Collections.sort(bookings);
+        return bookings.stream()
+                .map(this::mapToResponse)
+                .collect(Collectors.toList());
     }
 
 }

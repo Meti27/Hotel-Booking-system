@@ -21,4 +21,5 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
             LocalDate checkOut
     );
 
+    List<Booking> findByUserId(Long userId);
 }
