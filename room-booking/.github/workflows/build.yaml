@@ -1,4 +1,4 @@
-name: Build Backend
+name: Build & Test Backend
 
 on:
   push:
@@ -20,5 +20,8 @@ jobs:
           distribution: "temurin"
           java-version: "17"
 
-      - name: Build project
-        run: mvn -B clean install
+      - name: Build Project
+        run: mvn clean compile
+
+      - name: Run Tests
+        run: mvn test
