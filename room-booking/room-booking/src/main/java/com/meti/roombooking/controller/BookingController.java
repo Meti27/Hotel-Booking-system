@@ -3,7 +3,6 @@ package com.meti.roombooking.controller;
 import com.meti.roombooking.dto.booking.BookingRequest;
 import com.meti.roombooking.dto.booking.BookingResponse;
 import com.meti.roombooking.entity.BookingStatus;
-import com.meti.roombooking.entity.RoomStatus;
 import com.meti.roombooking.service.BookingService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
