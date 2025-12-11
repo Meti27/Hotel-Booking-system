@@ -10,13 +10,15 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      # We still build using dev profile for now
       SPRING_PROFILES_ACTIVE: dev
 
-      # Prod-style secrets (ready for future deployment)
+      # Prod-style secrets (ready for future deploy)
       DB_URL: ${{ secrets.DB_URL }}
       DB_USER: ${{ secrets.DB_USER }}
       DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+    defaults:
+      run:
+        working-directory: room-booking/room-booking
 
     steps:
       - name: Checkout repository
@@ -28,12 +30,26 @@ jobs:
           distribution: "temurin"
           java-version: "21"
 
-      - name: Build with Maven
+#      - name: Build with Maven (prod profile)
+#        run: mvn -B clean package -Dspring-boot.run.profiles=${SPRING_PROFILES_ACTIVE}
+#        working-directory: room-booking/room-booking
+#
+      - name: Build with Maven (dev profile)
         run: mvn -B clean package
         working-directory: room-booking/room-booking
+
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: backend-build
+
           path: room-booking/room-booking/target/*.jar
+      - name: Archive Test Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: room-booking/room-booking/target/surefire-reports
+
+
