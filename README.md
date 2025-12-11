@@ -1,3 +1,5 @@
+[![Build Backend](https://github.com/Meti27/Hotel-Booking-system/actions/workflows/build.yaml/badge.svg)](https://github.com/Meti27/Hotel-Booking-system/actions/workflows/build.yaml)
+
 Hotel Booking System
 
 This is a full-stack Hotel Booking application built with Spring Boot (Java), SQL Server, and React.
