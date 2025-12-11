@@ -55,3 +55,4 @@ Thumbs.db
 
 #DB
 src/main/resources/application.properties
+.env

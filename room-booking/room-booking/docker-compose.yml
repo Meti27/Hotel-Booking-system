@@ -1,0 +1,39 @@
+
+services:
+  db:
+    image: mariadb:11.4.3  # Changed from 12.1.2 to match what's running
+    container_name: room-booking-db
+    environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE}
+      DB_URL: ${DB_URL}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "3307:3306"
+    volumes:
+      - room_booking_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s  # Increased from 5s
+      timeout: 5s    # Increased from 3s
+      retries: 5     # Reduced from 10
+      start_period: 30s  # Added: gives DB time to initialize
+    restart: unless-stopped
+
+  backend:
+    build: .
+    container_name: room-booking-backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      DB_URL: jdbc:mariadb://db:3306/room_booking
+      DB_USER: roomuser
+      DB_PASSWORD: strongpassword123
+    ports:
+      - "8080:8080"
+
+volumes:
+  room_booking_data:
