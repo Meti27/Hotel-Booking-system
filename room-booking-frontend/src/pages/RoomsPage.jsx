@@ -1,16 +1,35 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { roomApi } from "../api/roomApi";
 import { bookingApi } from "../api/bookingApi";
 import { hotelConfig } from "../config/hotelConfig";
 import { useAuth } from "../auth/AuthContext";
 
-function RoomsPage() {
+// Helpers for UI labels
+function formatRoomType(type) {
+  if (!type) return "Room";
+  const map = { SINGLE: "Single", DOUBLE: "Double", SUITE: "Suite" };
+  return map[type] || type;
+}
+
+function statusLabel(status) {
+  if (!status) return "Unknown";
+  const map = { AVAILABLE: "Available", OCCUPIED: "Occupied", MAINTENANCE: "Maintenance" };
+  return map[status] || status;
+}
+
+function statusClass(status) {
+  if (status === "AVAILABLE") return "badge badge--success";
+  if (status === "OCCUPIED") return "badge badge--warning";
+  return "badge badge--muted";
+}
+
+export default function RoomsPage() {
   const [rooms, setRooms] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  // Booking modal state
+  // booking modal state
   const [selectedRoom, setSelectedRoom] = useState(null);
   const [checkIn, setCheckIn] = useState("");
   const [checkOut, setCheckOut] = useState("");
@@ -18,17 +37,17 @@ function RoomsPage() {
   const [bookingError, setBookingError] = useState("");
   const [bookingSuccess, setBookingSuccess] = useState("");
 
-  // NEW: date filter state
+  // filter state
   const [filterStart, setFilterStart] = useState("");
   const [filterEnd, setFilterEnd] = useState("");
-  const [filterError, setFilterError] = useState("");
   const [filterGuests, setFilterGuests] = useState("");
   const [filterType, setFilterType] = useState("");
+  const [filterError, setFilterError] = useState("");
+
   const { hero, contact } = hotelConfig;
   const { user, isLoggedIn } = useAuth();
   const navigate = useNavigate();
 
-  // moved out of useEffect so we can reuse it
   async function fetchRooms() {
     try {
       setLoading(true);
@@ -54,11 +73,8 @@ function RoomsPage() {
     }
 
     setSelectedRoom(room);
-
-    // NEW: prefill modal dates from filter if user used the filter
     setCheckIn(filterStart || "");
     setCheckOut(filterEnd || "");
-
     setBookingError("");
     setBookingSuccess("");
   }
@@ -87,10 +103,11 @@ function RoomsPage() {
 
     const payload = {
       roomId: selectedRoom.id,
-      userId: user.id, // <- real logged-in user
+      userId: user.id,
       checkIn,
       checkOut,
     };
+      console.log("Payload being sent:", payload);
 
     try {
       setBookingLoading(true);
@@ -100,6 +117,8 @@ function RoomsPage() {
       await bookingApi.createBooking(payload);
 
       setBookingSuccess("Booking successful!");
+      // Optional UX: auto-close after success
+      // setTimeout(() => closeBookingModal(), 900);
     } catch (err) {
       console.error("Booking failed", err);
       const msg =
@@ -112,674 +131,327 @@ function RoomsPage() {
     }
   }
 
-  // NEW: filter by date handler
-async function handleFilterRooms() {
-  if (!filterStart || !filterEnd) {
-    setFilterError("Please select both check-in and check-out to filter rooms.");
-    return;
+  async function handleFilterRooms() {
+    if (!filterStart || !filterEnd) {
+      setFilterError("Please select both check-in and check-out to filter rooms.");
+      return;
+    }
+    if (filterStart >= filterEnd) {
+      setFilterError("Check-in must be before check-out.");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError("");
+      setFilterError("");
+
+      const guestsNumber =
+        filterGuests && !Number.isNaN(Number(filterGuests)) ? Number(filterGuests) : undefined;
+
+      const data = await roomApi.getAvailableRooms(
+        filterStart,
+        filterEnd,
+        guestsNumber,
+        filterType || undefined
+      );
+
+      setRooms(data);
+    } catch (err) {
+      console.error("Failed to filter rooms", err);
+
+      const backendMsg =
+        err?.response?.data?.message ||
+        err?.response?.data?.error ||
+        (typeof err?.response?.data === "string" ? err.response.data : "") ||
+        err.message;
+
+      setError(backendMsg || "Failed to filter rooms. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   }
 
-  if (filterStart >= filterEnd) {
-    setFilterError("Check-in must be before check-out.");
-    return;
-  }
-
-  try {
-    setLoading(true);
-    setError("");
+  async function handleResetFilter() {
+    setFilterStart("");
+    setFilterEnd("");
+    setFilterGuests("");
+    setFilterType("");
     setFilterError("");
-
-    // parse guests as integer or leave undefined
-    const guestsNumber =
-      filterGuests && !Number.isNaN(Number(filterGuests))
-        ? Number(filterGuests)
-        : undefined;
-
-    const data = await roomApi.getAvailableRooms(
-      filterStart,
-      filterEnd,
-      guestsNumber,
-      filterType || undefined
-    );
-
-    setRooms(data);
-  } catch (err) {
-    console.error("Failed to filter rooms", err);
-
-    const backendMsg =
-      err?.response?.data?.message ||
-      err?.response?.data?.error ||
-      (typeof err?.response?.data === "string" ? err.response.data : "") ||
-      err.message;
-
-    setError(backendMsg || "Failed to filter rooms. Please try again.");
-  } finally {
-    setLoading(false);
-  }
-}
-  // NEW: reset filter (back to all rooms)
-async function handleResetFilter() {
-  setFilterStart("");
-  setFilterEnd("");
-  setFilterGuests("");
-  setFilterType("");
-  setFilterError("");
-  await fetchRooms();
-}
-
-  if (loading) {
-    return <p style={{ padding: "1rem" }}>Loading rooms...</p>;
+    await fetchRooms();
   }
 
-  if (error) {
-    return <p style={{ padding: "1rem", color: "red" }}>{error}</p>;
-  }
+  // cheap “stats” to make the hero feel real
+  const stats = useMemo(() => {
+    const total = rooms.length;
+    const available = rooms.filter((r) => r.status === "AVAILABLE").length;
+    const suites = rooms.filter((r) => r.type === "SUITE").length;
+    return { total, available, suites };
+  }, [rooms]);
 
   return (
-    <div
-      style={{
-        padding: "2rem 1.5rem 3rem",
-        fontFamily: "system-ui",
-        maxWidth: "1100px",
-        margin: "0 auto",
-      }}
-    >
-      {/* HERO SECTION */}
-      <section
-        style={{
-          marginBottom: "2rem",
-          padding: "2rem",
-          borderRadius: "1.25rem",
-          background:
-            "radial-gradient(circle at top left, #38bdf8 0, #0f172a 40%, #020617 100%)",
-          color: "#f9fafb",
-          boxShadow: "0 20px 40px rgba(15,23,42,0.8)",
-          border: "1px solid rgba(148,163,184,0.3)",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            flexWrap: "wrap",
-            gap: "1.5rem",
-            alignItems: "center",
-            justifyContent: "space-between",
-          }}
-        >
-          <div style={{ flex: "1 1 260px", minWidth: "0" }}>
-            <p
-              style={{
-                fontSize: "0.85rem",
-                textTransform: "uppercase",
-                letterSpacing: "0.15em",
-                opacity: 0.8,
-                marginBottom: "0.5rem",
-              }}
-            >
-              Modern Hotel Booking
-            </p>
-            <h1
-              style={{
-                fontSize: "2rem",
-                lineHeight: 1.2,
-                marginBottom: "0.5rem",
-              }}
-            >
-              {hero?.title || "Welcome to Our Hotel"}
-            </h1>
-            <p
-              style={{
-                opacity: 0.9,
-                fontSize: "0.95rem",
-                maxWidth: "480px",
-                marginBottom: "1rem",
-              }}
-            >
+    <div className="rooms-page">
+      {/* HERO */}
+      <section className="hero">
+        <div className="hero__overlay" />
+        <div className="hero__content">
+          <div className="hero__left">
+            <p className="hero__eyebrow">Modern Hotel Booking</p>
+            <h1 className="hero__title">{hero?.title || "Welcome to Our Hotel"}</h1>
+            <p className="hero__subtitle">
               {hero?.subtitle ||
                 "Browse available rooms, choose your dates, and confirm your stay in just a few clicks."}
             </p>
 
-            <div
-              style={{
-                display: "flex",
-                flexWrap: "wrap",
-                gap: "0.75rem",
-                alignItems: "center",
-              }}
-            >
-              <span
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "0.35rem",
-                  fontSize: "0.9rem",
-                  backgroundColor: "rgba(15,23,42,0.7)",
-                  padding: "0.4rem 0.7rem",
-                  borderRadius: "999px",
-                  border: "1px solid rgba(148,163,184,0.4)",
-                }}
-              >
-                🛏️ Instant overview of available rooms
-              </span>
-              <span
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "0.35rem",
-                  fontSize: "0.9rem",
-                  backgroundColor: "rgba(15,23,42,0.7)",
-                  padding: "0.4rem 0.7rem",
-                  borderRadius: "999px",
-                  border: "1px solid rgba(148,163,184,0.4)",
-                }}
-              >
-                📅 Smart booking with conflict prevention
-              </span>
+            <div className="hero__chips">
+              <span className="chip">🛏️ Instant room overview</span>
+              <span className="chip">📅 Conflict prevention</span>
+              <span className="chip">⚡ Fast booking flow</span>
+            </div>
+
+            <div className="hero__stats">
+              <div className="stat">
+                <div className="stat__num">{stats.total}</div>
+                <div className="stat__label">Rooms shown</div>
+              </div>
+              <div className="stat">
+                <div className="stat__num">{stats.available}</div>
+                <div className="stat__label">Available now</div>
+              </div>
+              <div className="stat">
+                <div className="stat__num">{stats.suites}</div>
+                <div className="stat__label">Suites</div>
+              </div>
             </div>
           </div>
 
-          <div
-            style={{
-              flex: "0 0 230px",
-              alignSelf: "stretch",
-              display: "flex",
-              flexDirection: "column",
-              justifyContent: "space-between",
-              gap: "1rem",
-              backgroundColor: "rgba(15,23,42,0.8)",
-              borderRadius: "1rem",
-              padding: "1rem 1.25rem",
-              border: "1px solid rgba(148,163,184,0.3)",
-            }}
-          >
-            <div>
-              <p
-                style={{
-                  fontSize: "0.8rem",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.12em",
-                  opacity: 0.8,
-                  marginBottom: "0.25rem",
-                }}
-              >
-                Need help with a reservation?
-              </p>
-              <p style={{ fontSize: "0.95rem", marginBottom: "0.5rem" }}>
-                Contact our front desk directly for group stays, events, and
-                special requests.
-              </p>
+          <aside className="hero__card">
+            <p className="hero__cardTitle">Need help with a reservation?</p>
+            <p className="hero__cardText">
+              Contact our front desk for group stays, events, and special requests.
+            </p>
+            <div className="hero__contact">
+              <div>📞 <strong>{contact?.phone || "+389 70 000 000"}</strong></div>
+              <div>📧 {contact?.email || "info@hotel.example"}</div>
+              <div>📍 {contact?.address || "Your City, Your Country"}</div>
             </div>
-            <div style={{ fontSize: "0.9rem" }}>
-              <p style={{ marginBottom: "0.25rem" }}>
-                📞 <strong>{contact?.phone || "+389 70 000 000"}</strong>
-              </p>
-              <p style={{ marginBottom: "0.25rem" }}>
-                📧 {contact?.email || "info@hotel.example"}
-              </p>
-              <p style={{ opacity: 0.85 }}>
-                📍 {contact?.address || "Your City, Your Country"}
-              </p>
+          </aside>
+        </div>
+
+        {/* SEARCH CARD */}
+        <div className="searchCard">
+          <div className="searchCard__grid">
+            <div className="field">
+              <label className="label" htmlFor="filterCheckIn">Check-in</label>
+              <input
+                id="filterCheckIn"
+                className="input"
+                type="date"
+                value={filterStart}
+                onChange={(e) => setFilterStart(e.target.value)}
+                onFocus={(e) => typeof e.target.showPicker === "function" && e.target.showPicker()}
+              />
+            </div>
+
+            <div className="field">
+              <label className="label" htmlFor="filterCheckOut">Check-out</label>
+              <input
+                id="filterCheckOut"
+                className="input"
+                type="date"
+                value={filterEnd}
+                onChange={(e) => setFilterEnd(e.target.value)}
+                onFocus={(e) => typeof e.target.showPicker === "function" && e.target.showPicker()}
+              />
+            </div>
+
+            <div className="field">
+              <label className="label" htmlFor="filterGuests">Guests</label>
+              <input
+                id="filterGuests"
+                className="input"
+                type="number"
+                min="1"
+                placeholder="e.g. 2"
+                value={filterGuests}
+                onChange={(e) => setFilterGuests(e.target.value)}
+              />
+            </div>
+
+            <div className="field">
+              <label className="label" htmlFor="filterType">Room type</label>
+              <select
+                id="filterType"
+                className="input"
+                value={filterType}
+                onChange={(e) => setFilterType(e.target.value)}
+              >
+                <option value="">Any</option>
+                <option value="SINGLE">Single</option>
+                <option value="DOUBLE">Double</option>
+                <option value="SUITE">Suite</option>
+              </select>
+            </div>
+
+            <div className="searchCard__actions">
+              <button className="btn btn--primary" onClick={handleFilterRooms}>
+                Search
+              </button>
+              <button className="btn btn--ghost" onClick={handleResetFilter}>
+                Reset
+              </button>
             </div>
           </div>
+
+          {filterError && <p className="errorText">{filterError}</p>}
         </div>
       </section>
 
-      {/* NEW: DATE FILTER SECTION */}
-     <section
-  style={{
-    marginBottom: "1.5rem",
-    padding: "1rem 1.25rem",
-    borderRadius: "1rem",
-    backgroundColor: "#020617",
-    border: "1px solid #1f2937",
-    display: "flex",
-    flexWrap: "wrap",
-    gap: "1rem",
-    alignItems: "flex-end",
-    justifyContent: "space-between",
-  }}
->
-  <div
-    style={{
-      display: "flex",
-      flexWrap: "wrap",
-      gap: "1rem",
-    }}
-  >
-    {/* Check-in */}
-    <div>
-      <label
-        htmlFor="filterCheckIn"
-        style={{
-          display: "block",
-          marginBottom: "0.25rem",
-          fontSize: "0.85rem",
-          color: "#e5e7eb",
-        }}
-      >
-        Check-in date
-      </label>
-      <input
-        id="filterCheckIn"
-        type="date"
-        value={filterStart}
-        onChange={(e) => setFilterStart(e.target.value)}
-        onFocus={(e) => {
-          if (typeof e.target.showPicker === "function") {
-            e.target.showPicker();
-          }
-        }}
-        style={modalInputStyle}
-      />
-    </div>
+      {/* CONTENT */}
+      <section className="section">
+        {loading && <p className="muted">Loading rooms...</p>}
+        {!loading && error && <p className="errorText">{error}</p>}
 
-    {/* Check-out */}
-    <div>
-      <label
-        htmlFor="filterCheckOut"
-        style={{
-          display: "block",
-          marginBottom: "0.25rem",
-          fontSize: "0.85rem",
-          color: "#e5e7eb",
-        }}
-      >
-        Check-out date
-      </label>
-      <input
-        id="filterCheckOut"
-        type="date"
-        value={filterEnd}
-        onChange={(e) => setFilterEnd(e.target.value)}
-        onFocus={(e) => {
-          if (typeof e.target.showPicker === "function") {
-            e.target.showPicker();
-          }
-        }}
-        style={modalInputStyle}
-      />
-    </div>
-
-    {/* Guests */}
-    <div>
-      <label
-        htmlFor="filterGuests"
-        style={{
-          display: "block",
-          marginBottom: "0.25rem",
-          fontSize: "0.85rem",
-          color: "#e5e7eb",
-        }}
-      >
-        Guests
-      </label>
-      <input
-        id="filterGuests"
-        type="number"
-        min="1"
-        value={filterGuests}
-        onChange={(e) => setFilterGuests(e.target.value)}
-        style={modalInputStyle}
-        placeholder="e.g. 2"
-      />
-    </div>
-
-    {/* Room type */}
-    <div>
-      <label
-        htmlFor="filterType"
-        style={{
-          display: "block",
-          marginBottom: "0.25rem",
-          fontSize: "0.85rem",
-          color: "#e5e7eb",
-        }}
-      >
-        Room type
-      </label>
-      <select
-        id="filterType"
-        value={filterType}
-        onChange={(e) => setFilterType(e.target.value)}
-        style={modalInputStyle}
-      >
-        <option value="">Any</option>
-        <option value="SINGLE">Single</option>
-        <option value="DOUBLE">Double</option>
-        <option value="SUITE">Suite</option>
-        {/* ⚠️ These must match your RoomType enum values exactly */}
-      </select>
-    </div>
-  </div>
-
-  <div
-    style={{
-      display: "flex",
-      gap: "0.5rem",
-      flexWrap: "wrap",
-    }}
-  >
-    <button
-      onClick={handleFilterRooms}
-      style={{
-        padding: "0.5rem 1rem",
-        borderRadius: "0.6rem",
-        border: "none",
-        backgroundColor: "#2563eb",
-        color: "#f9fafb",
-        fontWeight: 600,
-        cursor: "pointer",
-      }}
-    >
-      Search available rooms
-    </button>
-
-    <button
-      onClick={handleResetFilter}
-      style={{
-        padding: "0.5rem 1rem",
-        borderRadius: "0.6rem",
-        border: "1px solid #4b5563",
-        backgroundColor: "#020617",
-        color: "#e5e7eb",
-        fontWeight: 500,
-        cursor: "pointer",
-      }}
-    >
-      Reset
-    </button>
-  </div>
-
-  {filterError && (
-    <p
-      style={{
-        width: "100%",
-        marginTop: "0.5rem",
-        color: "#f97373",
-        fontSize: "0.85rem",
-      }}
-    >
-      {filterError}
-    </p>
-  )}
-</section>
-
-
-      {/* ROOMS SECTION */}
-      {rooms.length === 0 ? (
-        <p>No rooms found.</p>
-      ) : (
-        <>
-          <h2
-            style={{
-              marginBottom: "0.75rem",
-              fontSize: "1.3rem",
-              color: "#e5e7eb",
-            }}
-          >
-            Available Rooms
-          </h2>
-          <p
-            style={{
-              marginBottom: "1.5rem",
-              opacity: 0.85,
-              fontSize: "0.95rem",
-            }}
-          >
-            Choose a room type and start your booking. You’ll see conflicts
-            prevented automatically if dates overlap with existing bookings.
-          </p>
-
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-              gap: "1rem",
-            }}
-          >
-            {rooms.map((room) => (
-              <div
-                key={room.id}
-                style={{
-                  border: "1px solid #1f2937",
-                  borderRadius: "0.9rem",
-                  padding: "1rem",
-                  boxShadow: "0 6px 20px rgba(15,23,42,0.6)",
-                  background:
-                    "linear-gradient(145deg, rgba(15,23,42,0.95), rgba(15,23,42,0.8))",
-                }}
-              >
-                <h2 style={{ marginBottom: "0.5rem", color: "#f9fafb" }}>
-                  Room {room.roomNumber} ({room.type})
-                </h2>
-                <p style={{ margin: "0.25rem 0", fontSize: "0.9rem" }}>
-                  <strong>Capacity:</strong> {room.capacity} guest
-                  {room.capacity > 1 ? "s" : ""}
+        {!loading && !error && (
+          <>
+            <div className="section__header">
+              <div>
+                <h2 className="section__title">Rooms</h2>
+                <p className="section__subtitle">
+                  Choose a room and book instantly. Date conflicts are prevented automatically.
                 </p>
-                <p style={{ margin: "0.25rem 0", fontSize: "0.9rem" }}>
-                  <strong>Price per night:</strong> {room.pricePerNight} €
-                </p>
-                <p
-                  style={{
-                    margin: "0.25rem 0",
-                    fontWeight: 600,
-                    fontSize: "0.9rem",
-                    color:
-                      room.status === "AVAILABLE"
-                        ? "#22c55e"
-                        : room.status === "OCCUPIED"
-                        ? "#f97316"
-                        : "#9ca3af",
-                  }}
-                >
-                  Status: {room.status}
-                </p>
-                {room.description && (
-                  <p
-                    style={{
-                      marginTop: "0.5rem",
-                      fontSize: "0.9rem",
-                      opacity: 0.95,
-                      color: "#e5e7eb",
-                    }}
-                  >
-                    {room.description}
-                  </p>
-                )}
+              </div>
 
-                {/* Book button */}
-                <button
-                  style={{
-                    marginTop: "0.9rem",
-                    padding: "0.55rem 1rem",
-                    background:
-                      room.status === "AVAILABLE" ? "#2563eb" : "#4b5563",
-                    color: "white",
-                    border: "none",
-                    borderRadius: "0.6rem",
-                    cursor:
-                      room.status === "AVAILABLE" ? "pointer" : "not-allowed",
-                    width: "100%",
-                    fontWeight: 600,
-                    fontSize: "0.95rem",
-                    opacity: room.status === "AVAILABLE" ? 1 : 0.7,
-                  }}
-                  onClick={() =>
-                    room.status === "AVAILABLE" && openBookingModal(room)
-                  }
-                  disabled={room.status !== "AVAILABLE"}
-                >
-                  {room.status === "AVAILABLE" ? "Book Now" : "Not Available"}
+              <div className="section__hint">
+                Tip: pick dates first, then open a room — it pre-fills the booking modal.
+              </div>
+            </div>
+
+            {rooms.length === 0 ? (
+              <div className="empty">
+                <div className="empty__title">No rooms found</div>
+                <div className="empty__text">Try different dates or reset filters.</div>
+                <button className="btn btn--ghost" onClick={handleResetFilter}>
+                  Reset filters
                 </button>
               </div>
-            ))}
-          </div>
-        </>
-      )}
+            ) : (
+              <div className="grid">
+                {rooms.map((room) => (
+                  <article key={room.id} className="roomCard">
+                    <div className="roomCard__image">
+                      {/* Placeholder “image”. Later you can replace with real photos per room */}
+                      <div className="roomCard__imageOverlay" />
+                      <div className="roomCard__imageText">
+                        {formatRoomType(room.type)} • #{room.roomNumber}
+                      </div>
+                    </div>
 
-      {/* BOOKING MODAL */}
+                    <div className="roomCard__body">
+                      <div className="roomCard__top">
+                        <div>
+                          <h3 className="roomCard__title">
+                            Room {room.roomNumber}
+                            <span className="roomCard__type">({formatRoomType(room.type)})</span>
+                          </h3>
+                          <div className="roomCard__meta">
+                            <span>👤 {room.capacity} guest{room.capacity > 1 ? "s" : ""}</span>
+                            <span>•</span>
+                            <span className="price">{room.pricePerNight} € / night</span>
+                          </div>
+                        </div>
+
+                        <span className={statusClass(room.status)}>{statusLabel(room.status)}</span>
+                      </div>
+
+                      {room.description && <p className="roomCard__desc">{room.description}</p>}
+
+                      <div className="roomCard__actions">
+                        <button
+                          className={`btn btn--primary ${room.status === "AVAILABLE" ? "" : "btn--disabled"}`}
+                          onClick={() => room.status === "AVAILABLE" && openBookingModal(room)}
+                          disabled={room.status !== "AVAILABLE"}
+                        >
+                          {room.status === "AVAILABLE" ? "Book now" : "Not available"}
+                        </button>
+                      </div>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </section>
+
+      {/* MODAL */}
       {selectedRoom && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(15,23,42,0.7)",
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            zIndex: 1000,
-          }}
-        >
-          <div
-            style={{
-              background: "#020617",
-              padding: "2rem",
-              borderRadius: "1.25rem",
-              width: "350px",
-              boxShadow: "0 20px 40px rgba(0,0,0,0.6)",
-              border: "1px solid #1f2937",
-              color: "#f9fafb",
-            }}
-          >
-            <h2 style={{ marginBottom: "0.5rem" }}>
-              Book Room {selectedRoom.roomNumber}
-            </h2>
-            <p
-              style={{
-                marginBottom: "1rem",
-                fontSize: "0.9rem",
-                opacity: 0.85,
-              }}
-            >
-              {selectedRoom.type} • {selectedRoom.capacity} guest
-              {selectedRoom.capacity > 1 ? "s" : ""} •{" "}
-              {selectedRoom.pricePerNight} €/night
-            </p>
+        <div className="modalBackdrop" role="dialog" aria-modal="true">
+          <div className="modal">
+            <div className="modal__header">
+              <div>
+                <h3 className="modal__title">
+                  Book Room {selectedRoom.roomNumber}{" "}
+                  <span className="modal__type">({formatRoomType(selectedRoom.type)})</span>
+                </h3>
+                <p className="modal__subtitle">
+                  {selectedRoom.capacity} guest{selectedRoom.capacity > 1 ? "s" : ""} •{" "}
+                  {selectedRoom.pricePerNight} €/night
+                </p>
+              </div>
 
-            <div style={{ marginBottom: "0.75rem" }}>
-              <label
-                htmlFor="checkIn"
-                style={{
-                  display: "block",
-                  marginBottom: "0.25rem",
-                  fontSize: "0.85rem",
-                }}
-              >
-                Check-in date
-              </label>
-              <input
-                id="checkIn"
-                type="date"
-                value={checkIn}
-                onChange={(e) => setCheckIn(e.target.value)}
-                onFocus={(e) => {
-                  if (typeof e.target.showPicker === "function") {
-                    e.target.showPicker();
-                  }
-                }}
-                style={modalInputStyle}
-              />
+              <button className="iconBtn" onClick={closeBookingModal} aria-label="Close">
+                ✕
+              </button>
             </div>
 
-            <div style={{ marginBottom: "0.75rem" }}>
-              <label
-                htmlFor="checkOut"
-                style={{
-                  display: "block",
-                  marginBottom: "0.25rem",
-                  fontSize: "0.85rem",
-                }}
-              >
-                Check-out date
-              </label>
-              <input
-                id="checkOut"
-                type="date"
-                value={checkOut}
-                onChange={(e) => setCheckOut(e.target.value)}
-                onFocus={(e) => {
-                  if (typeof e.target.showPicker === "function") {
-                    e.target.showPicker();
-                  }
-                }}
-                style={modalInputStyle}
-              />
+            <div className="modal__body">
+              <div className="modalGrid">
+                <div className="field">
+                  <label className="label" htmlFor="checkIn">Check-in</label>
+                  <input
+                    id="checkIn"
+                    className="input"
+                    type="date"
+                    value={checkIn}
+                    onChange={(e) => setCheckIn(e.target.value)}
+                    onFocus={(e) => typeof e.target.showPicker === "function" && e.target.showPicker()}
+                  />
+                </div>
+
+                <div className="field">
+                  <label className="label" htmlFor="checkOut">Check-out</label>
+                  <input
+                    id="checkOut"
+                    className="input"
+                    type="date"
+                    value={checkOut}
+                    onChange={(e) => setCheckOut(e.target.value)}
+                    onFocus={(e) => typeof e.target.showPicker === "function" && e.target.showPicker()}
+                  />
+                </div>
+              </div>
+
+              {bookingError && <p className="errorText">{bookingError}</p>}
+              {bookingSuccess && <p className="successText">{bookingSuccess}</p>}
             </div>
 
-            {bookingError && (
-              <p
-                style={{
-                  color: "#f97373",
-                  fontSize: "0.85rem",
-                  marginBottom: "0.5rem",
-                }}
+            <div className="modal__footer">
+              <button
+                className={`btn btn--success ${bookingLoading ? "btn--disabled" : ""}`}
+                onClick={handleSubmitBooking}
+                disabled={bookingLoading}
               >
-                {bookingError}
-              </p>
-            )}
+                {bookingLoading ? "Booking..." : "Confirm booking"}
+              </button>
 
-            {bookingSuccess && (
-              <p
-                style={{
-                  color: "#4ade80",
-                  fontSize: "0.85rem",
-                  marginBottom: "0.5rem",
-                }}
-              >
-                {bookingSuccess}
-              </p>
-            )}
-
-            <button
-              style={{
-                marginTop: "0.5rem",
-                padding: "0.5rem 1rem",
-                background: "#16a34a",
-                color: "white",
-                border: "none",
-                borderRadius: "0.6rem",
-                cursor: "pointer",
-                width: "100%",
-                opacity: bookingLoading ? 0.7 : 1,
-                fontWeight: 600,
-              }}
-              onClick={handleSubmitBooking}
-              disabled={bookingLoading}
-            >
-              {bookingLoading ? "Booking..." : "Confirm Booking"}
-            </button>
-
-            <button
-              style={{
-                marginTop: "0.5rem",
-                width: "100%",
-                padding: "0.5rem",
-                background: "#4b5563",
-                color: "white",
-                borderRadius: "0.6rem",
-                border: "none",
-                cursor: "pointer",
-                fontWeight: 500,
-              }}
-              onClick={closeBookingModal}
-            >
-              Close
-            </button>
+              <button className="btn btn--ghost" onClick={closeBookingModal}>
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}
     </div>
   );
 }
-
-const modalInputStyle = {
-  width: "100%",
-  padding: "0.4rem 0.5rem",
-  borderRadius: "0.5rem",
-  border: "1px solid #374151",
-  backgroundColor: "#020617",
-  color: "#e5e7eb",
-  fontSize: "0.9rem",
-};
-
-export default RoomsPage;

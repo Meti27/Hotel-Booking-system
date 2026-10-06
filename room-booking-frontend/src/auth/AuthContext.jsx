@@ -11,7 +11,7 @@ const USERS = [
   },
   {
     id: 2,
-    role: "USER",
+    role: "CLIENT",
     email: "john@doe.com",
     password: "user123",
     name: "John Doe",
