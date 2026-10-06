@@ -1,16 +1,29 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { roomApi } from "../api/roomApi";
 import { hotelConfig } from "../config/hotelConfig";
+import "../styles/adminRooms.css";
 
 const ROOM_TYPES = ["SINGLE", "DOUBLE", "SUITE"];
 const ROOM_STATUS = ["AVAILABLE", "OCCUPIED", "MAINTENANCE"];
 
-function AdminRoomsPage() {
+function badgeClass(status) {
+  if (status === "AVAILABLE") return "badge badge--success";
+  if (status === "OCCUPIED") return "badge badge--warning";
+  if (status === "MAINTENANCE") return "badge badge--muted";
+  return "badge badge--muted";
+}
+
+function typePill(type) {
+  const map = { SINGLE: "Single", DOUBLE: "Double", SUITE: "Suite" };
+  return map[type] || type;
+}
+
+export default function AdminRoomsPage() {
   const [rooms, setRooms] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  // form state for creating a room
+  // create form state
   const [roomNumber, setRoomNumber] = useState("");
   const [type, setType] = useState("SINGLE");
   const [capacity, setCapacity] = useState(1);
@@ -24,7 +37,6 @@ function AdminRoomsPage() {
 
   const { shortName } = hotelConfig;
 
-  // load rooms on mount
   useEffect(() => {
     fetchRooms();
   }, []);
@@ -50,12 +62,10 @@ function AdminRoomsPage() {
       setSaveError("Room number is required.");
       return;
     }
-
     if (!capacity || capacity <= 0) {
       setSaveError("Capacity must be at least 1.");
       return;
     }
-
     if (!pricePerNight || pricePerNight <= 0) {
       setSaveError("Price per night must be greater than 0.");
       return;
@@ -78,10 +88,8 @@ function AdminRoomsPage() {
       await roomApi.createRoom(payload);
 
       setSaveSuccess("Room created successfully.");
-      // reset minimal fields
       setRoomNumber("");
       setDescription("");
-      // refresh list
       await fetchRooms();
     } catch (err) {
       console.error("Failed to create room", err);
@@ -96,14 +104,11 @@ function AdminRoomsPage() {
   }
 
   async function handleDeleteRoom(roomId) {
-    const confirm = window.confirm(
-      "Are you sure you want to delete this room?"
-    );
-    if (!confirm) return;
+    const ok = window.confirm("Are you sure you want to delete this room?");
+    if (!ok) return;
 
     try {
       await roomApi.deleteRoom(roomId);
-      // remove from local state without refetch or refetch, both fine
       setRooms((prev) => prev.filter((r) => r.id !== roomId));
     } catch (err) {
       console.error("Failed to delete room", err);
@@ -111,89 +116,100 @@ function AdminRoomsPage() {
     }
   }
 
+  const stats = useMemo(() => {
+    const total = rooms.length;
+    const available = rooms.filter((r) => r.status === "AVAILABLE").length;
+    const occupied = rooms.filter((r) => r.status === "OCCUPIED").length;
+    const maintenance = rooms.filter((r) => r.status === "MAINTENANCE").length;
+    return { total, available, occupied, maintenance };
+  }, [rooms]);
+
   return (
-    <div style={{ padding: "2rem", fontFamily: "system-ui", color: "#f9fafb" }}>
-      <h1 style={{ marginBottom: "0.5rem" }}>Admin – Rooms</h1>
-      <p style={{ marginBottom: "1.5rem", opacity: 0.85 }}>
-        Manage rooms for {shortName}: create, view and delete rooms.
-      </p>
+    <div className="adminPage">
+      <header className="adminHeader">
+        <div>
+          <h1 className="adminTitle">Admin • Rooms</h1>
+          <p className="adminSubtitle">
+            Manage rooms for <strong>{shortName}</strong>: create, view, and delete.
+          </p>
+        </div>
+
+        <div className="adminStats">
+          <div className="statCard">
+            <div className="statNum">{stats.total}</div>
+            <div className="statLabel">Total rooms</div>
+          </div>
+          <div className="statCard">
+            <div className="statNum">{stats.available}</div>
+            <div className="statLabel">Available</div>
+          </div>
+          <div className="statCard">
+            <div className="statNum">{stats.occupied}</div>
+            <div className="statLabel">Occupied</div>
+          </div>
+          <div className="statCard">
+            <div className="statNum">{stats.maintenance}</div>
+            <div className="statLabel">Maintenance</div>
+          </div>
+        </div>
+      </header>
 
       {/* Create form */}
-      <section
-        style={{
-          marginBottom: "2rem",
-          padding: "1.5rem",
-          borderRadius: "0.75rem",
-          backgroundColor: "#111827",
-          border: "1px solid #1f2937",
-        }}
-      >
-        <h2 style={{ marginBottom: "1rem", fontSize: "1.1rem" }}>Create Room</h2>
+      <section className="panel">
+        <div className="panelHeader">
+          <h2 className="panelTitle">Create room</h2>
+          <p className="panelHint">Add new rooms to inventory.</p>
+        </div>
 
-        <form
-          onSubmit={handleCreateRoom}
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-            gap: "1rem",
-          }}
-        >
-          <div>
-            <label style={labelStyle}>Room Number</label>
+        <form onSubmit={handleCreateRoom} className="formGrid">
+          <div className="field">
+            <label className="label">Room number</label>
             <input
+              className="input"
               type="text"
               value={roomNumber}
               onChange={(e) => setRoomNumber(e.target.value)}
-              style={inputStyle}
               placeholder="e.g. 101"
             />
           </div>
 
-          <div>
-            <label style={labelStyle}>Type</label>
-            <select
-              value={type}
-              onChange={(e) => setType(e.target.value)}
-              style={inputStyle}
-            >
+          <div className="field">
+            <label className="label">Type</label>
+            <select className="input" value={type} onChange={(e) => setType(e.target.value)}>
               {ROOM_TYPES.map((t) => (
                 <option key={t} value={t}>
-                  {t}
+                  {typePill(t)}
                 </option>
               ))}
             </select>
           </div>
 
-          <div>
-            <label style={labelStyle}>Capacity</label>
+          <div className="field">
+            <label className="label">Capacity</label>
             <input
+              className="input"
               type="number"
               min="1"
               value={capacity}
               onChange={(e) => setCapacity(e.target.value)}
-              style={inputStyle}
             />
           </div>
 
-          <div>
-            <label style={labelStyle}>Price per night (€)</label>
+          <div className="field">
+            <label className="label">Price / night (€)</label>
             <input
+              className="input"
               type="number"
               min="1"
               step="1"
               value={pricePerNight}
               onChange={(e) => setPricePerNight(e.target.value)}
-              style={inputStyle}
             />
           </div>
 
-          <div>
-            <label style={labelStyle}>Status</label>
-            <select
-              value={status}
-              onChange={(e) => setStatus(e.target.value)}
-              style={inputStyle}
-            >
+          <div className="field">
+            <label className="label">Status</label>
+            <select className="input" value={status} onChange={(e) => setStatus(e.target.value)}>
               {ROOM_STATUS.map((s) => (
                 <option key={s} value={s}>
                   {s}
@@ -202,155 +218,113 @@ function AdminRoomsPage() {
             </select>
           </div>
 
-          <div style={{ gridColumn: "1 / -1" }}>
-            <label style={labelStyle}>Description (optional)</label>
+          <div className="field spanAll">
+            <label className="label">Description (optional)</label>
             <textarea
+              className="input textarea"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              style={{ ...inputStyle, minHeight: "60px", resize: "vertical" }}
               placeholder="Short description of the room"
             />
           </div>
 
-          <div style={{ gridColumn: "1 / -1" }}>
-            {saveError && (
-              <p style={{ color: "#f97373", marginBottom: "0.5rem" }}>
-                {saveError}
-              </p>
-            )}
-            {saveSuccess && (
-              <p style={{ color: "#4ade80", marginBottom: "0.5rem" }}>
-                {saveSuccess}
-              </p>
-            )}
+          <div className="spanAll">
+            {saveError && <p className="errorText">{saveError}</p>}
+            {saveSuccess && <p className="successText">{saveSuccess}</p>}
 
-            <button
-              type="submit"
-              disabled={saving}
-              style={{
-                padding: "0.6rem 1.2rem",
-                borderRadius: "0.5rem",
-                border: "none",
-                cursor: "pointer",
-                backgroundColor: "#2563eb",
-                color: "white",
-                fontWeight: 600,
-                opacity: saving ? 0.7 : 1,
-              }}
-            >
-              {saving ? "Creating..." : "Create Room"}
+            <button className={`btn btn--primary ${saving ? "btn--disabled" : ""}`} disabled={saving}>
+              {saving ? "Creating..." : "Create room"}
             </button>
           </div>
         </form>
       </section>
 
       {/* Rooms list */}
-      <section>
-        <h2 style={{ marginBottom: "1rem", fontSize: "1.1rem" }}>All Rooms</h2>
+      <section className="panel">
+        <div className="panelHeader">
+          <h2 className="panelTitle">All rooms</h2>
+          <p className="panelHint">View, filter (later), and delete rooms.</p>
+        </div>
 
         {loading ? (
-          <p>Loading rooms...</p>
+          <p className="muted">Loading rooms...</p>
         ) : error ? (
-          <p style={{ color: "#f97373" }}>{error}</p>
+          <p className="errorText">{error}</p>
         ) : rooms.length === 0 ? (
-          <p>No rooms found.</p>
-        ) : (
-          <div
-            style={{
-              overflowX: "auto",
-              borderRadius: "0.75rem",
-              border: "1px solid #1f2937",
-              backgroundColor: "#111827",
-            }}
-          >
-            <table
-              style={{
-                width: "100%",
-                borderCollapse: "collapse",
-                fontSize: "0.95rem",
-              }}
-            >
-              <thead style={{ backgroundColor: "#020617", color: "#e5e7eb" }}>
-                <tr>
-                  <th style={thCell}>ID</th>
-                  <th style={thCell}>Room</th>
-                  <th style={thCell}>Type</th>
-                  <th style={thCell}>Capacity</th>
-                  <th style={thCell}>Price/night</th>
-                  <th style={thCell}>Status</th>
-                  <th style={thCell}>Description</th>
-                  <th style={thCell}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rooms.map((room) => (
-                  <tr key={room.id} style={{ borderTop: "1px solid #1f2937" }}>
-                    <td style={tdCell}>{room.id}</td>
-                    <td style={tdCell}>{room.roomNumber}</td>
-                    <td style={tdCell}>{room.type}</td>
-                    <td style={tdCell}>{room.capacity}</td>
-                    <td style={tdCell}>{room.pricePerNight} €</td>
-                    <td style={tdCell}>{room.status}</td>
-                    <td style={tdCell}>
-                      {room.description || <span style={{ opacity: 0.6 }}>—</span>}
-                    </td>
-                    <td style={tdCell}>
-                      <button
-                        style={{
-                          padding: "0.35rem 0.75rem",
-                          borderRadius: "0.4rem",
-                          border: "none",
-                          cursor: "pointer",
-                          backgroundColor: "#b91c1c",
-                          color: "white",
-                          fontSize: "0.85rem",
-                        }}
-                        onClick={() => handleDeleteRoom(room.id)}
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="empty">
+            <div className="empty__title">No rooms found</div>
+            <div className="empty__text">Create the first room above.</div>
           </div>
+        ) : (
+          <>
+            {/* Desktop / tablet table */}
+            <div className="tableWrap">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Room</th>
+                    <th>Type</th>
+                    <th>Capacity</th>
+                    <th>Price/night</th>
+                    <th>Status</th>
+                    <th>Description</th>
+                    <th className="right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rooms.map((room) => (
+                    <tr key={room.id}>
+                      <td>{room.id}</td>
+                      <td className="strong">#{room.roomNumber}</td>
+                      <td>{typePill(room.type)}</td>
+                      <td>{room.capacity}</td>
+                      <td className="strong">{room.pricePerNight} €</td>
+                      <td>
+                        <span className={badgeClass(room.status)}>{room.status}</span>
+                      </td>
+                      <td className="descCell">
+                        {room.description || <span className="mutedSmall">—</span>}
+                      </td>
+                      <td className="right">
+                        <button className="btn btn--danger" onClick={() => handleDeleteRoom(room.id)}>
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile cards */}
+            <div className="mobileCards">
+              {rooms.map((room) => (
+                <article key={room.id} className="roomMiniCard">
+                  <div className="roomMiniTop">
+                    <div>
+                      <div className="roomMiniTitle">Room #{room.roomNumber}</div>
+                      <div className="roomMiniMeta">
+                        {typePill(room.type)} • {room.capacity} guest{room.capacity > 1 ? "s" : ""} •{" "}
+                        <span className="strong">{room.pricePerNight} €</span>
+                      </div>
+                    </div>
+                    <span className={badgeClass(room.status)}>{room.status}</span>
+                  </div>
+
+                  {room.description && <p className="roomMiniDesc">{room.description}</p>}
+
+                  <div className="roomMiniActions">
+                    <button className="btn btn--danger btn--block" onClick={() => handleDeleteRoom(room.id)}>
+                      Delete
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </>
         )}
       </section>
     </div>
   );
 }
-
-const labelStyle = {
-  display: "block",
-  marginBottom: "0.25rem",
-  fontSize: "0.85rem",
-  opacity: 0.85,
-};
-
-const inputStyle = {
-  width: "100%",
-  padding: "0.45rem 0.5rem",
-  borderRadius: "0.5rem",
-  border: "1px solid #374151",
-  backgroundColor: "#020617",
-  color: "#e5e7eb",
-  fontSize: "0.9rem",
-};
-
-const thCell = {
-  textAlign: "left",
-  padding: "0.75rem",
-  fontWeight: 600,
-  fontSize: "0.8rem",
-  textTransform: "uppercase",
-  letterSpacing: "0.05em",
-};
-
-const tdCell = {
-  padding: "0.6rem 0.75rem",
-  verticalAlign: "top",
-  fontSize: "0.9rem",
-};
-
-export default AdminRoomsPage;
